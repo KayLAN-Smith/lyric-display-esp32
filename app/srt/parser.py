@@ -144,7 +144,7 @@ def get_lyric_at_position(lyrics: list[LyricLine], position_ms: int,
     offset_ms is added to position_ms before lookup.
     Returns (-1, "") if no lyric is active.
     """
-    adjusted = position_ms + offset_ms
+    adjusted = position_ms - offset_ms
     for i, line in enumerate(lyrics):
         if line.start_ms <= adjusted < line.end_ms:
             return i, line.text

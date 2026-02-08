@@ -21,12 +21,12 @@ from PySide6.QtCore import QPoint
 # ── Display constants (matching ESP32 firmware) ──────────────────────
 SCREEN_WIDTH = 128
 SCREEN_HEIGHT = 64
-LYRICS_AREA_HEIGHT = 48
-SEPARATOR_Y = 49
-STATUS_BAR_Y = 52
+LYRICS_AREA_HEIGHT = 53
+SEPARATOR_Y = 53
+STATUS_BAR_Y = 54
 ICON_X = 2
-META_TEXT_X = 16
-META_AVAIL_WIDTH = SCREEN_WIDTH - META_TEXT_X  # 112 px
+META_TEXT_X = 14
+META_AVAIL_WIDTH = SCREEN_WIDTH - META_TEXT_X  # 114 px
 
 # ── Scroll / animation constants ────────────────────────────────────
 LYRIC_SCROLL_INTERVAL_MS = 2000
@@ -352,27 +352,27 @@ class _OledCanvas(QWidget):
 
     def _paint_status_bar(self, p: QPainter):
         """Draw play/pause icon and scrolling meta text."""
-        icon_y = STATUS_BAR_Y
+        icon_y = STATUS_BAR_Y + 2
 
-        # Play/pause/stop icon
+        # Play/pause/stop icon (compact 7px tall)
         if self._play_state == "playing":
-            # Triangle (play)
+            # Show pause icon (press to pause)
+            p.fillRect(ICON_X, icon_y, 2, 7, COL_OLED_FG)
+            p.fillRect(ICON_X + 4, icon_y, 2, 7, COL_OLED_FG)
+        elif self._play_state == "paused":
+            # Show play icon (press to resume)
             tri = QPolygon([
                 QPoint(ICON_X, icon_y),
-                QPoint(ICON_X, icon_y + 10),
-                QPoint(ICON_X + 8, icon_y + 5),
+                QPoint(ICON_X, icon_y + 7),
+                QPoint(ICON_X + 6, icon_y + 3),
             ])
             p.setBrush(COL_OLED_FG)
             p.setPen(Qt.PenStyle.NoPen)
             p.drawPolygon(tri)
             p.setPen(QPen(COL_OLED_FG))
             p.setBrush(Qt.BrushStyle.NoBrush)
-        elif self._play_state == "paused":
-            p.fillRect(ICON_X, icon_y, 3, 11, COL_OLED_FG)
-            p.fillRect(ICON_X + 5, icon_y, 3, 11, COL_OLED_FG)
         else:
-            # Stop square
-            p.fillRect(ICON_X, icon_y, 9, 9, COL_OLED_FG)
+            p.fillRect(ICON_X, icon_y, 7, 7, COL_OLED_FG)
 
         # Meta text
         if not self._meta_text:
@@ -385,22 +385,20 @@ class _OledCanvas(QWidget):
         p.setFont(font)
 
         if not self._meta_needs_scroll:
-            p.drawText(META_TEXT_X, STATUS_BAR_Y + meta_font_px, self._meta_text)
+            p.drawText(META_TEXT_X, STATUS_BAR_Y + meta_font_px - 2, self._meta_text)
         else:
             # Scrolling text — draw two copies offset by total width
             total_w = self._meta_text_width + META_SCROLL_GAP
             for pass_i in range(2):
                 base_x = META_TEXT_X - self._meta_scroll_x + pass_i * total_w
-                # Clip: only draw if visible
                 if base_x + self._meta_text_width < META_TEXT_X:
                     continue
                 if base_x >= SCREEN_WIDTH:
                     continue
-                # Save clip region, draw, restore
                 p.save()
                 p.setClipRect(QRect(META_TEXT_X, STATUS_BAR_Y,
                                     META_AVAIL_WIDTH, SCREEN_HEIGHT - STATUS_BAR_Y))
-                p.drawText(base_x, STATUS_BAR_Y + 10, self._meta_text)
+                p.drawText(base_x, STATUS_BAR_Y + meta_font_px - 2, self._meta_text)
                 p.restore()
 
     # ── Helpers ──────────────────────────────────────────────────────

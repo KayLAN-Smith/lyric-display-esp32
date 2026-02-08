@@ -39,12 +39,14 @@
 #define SCL_PIN         22
 
 // ── Layout constants ────────────────────────────────────────────────
-#define LYRICS_AREA_HEIGHT  48   // pixels for lyric text area
-#define SEPARATOR_Y         49   // y of the horizontal divider line
-#define STATUS_BAR_Y        52   // y where status bar content starts
+#define LYRICS_AREA_HEIGHT  53   // pixels for lyric text area
+#define SEPARATOR_Y         53   // y of the horizontal divider line
+#define STATUS_BAR_Y        54   // y where status bar content starts
 #define ICON_X              2    // x position of play/pause icon
-#define META_TEXT_X          16  // x position where meta text starts
-#define META_AVAIL_WIDTH    (SCREEN_WIDTH - META_TEXT_X)  // 112 px
+#define ICON_Y              (STATUS_BAR_Y + 2)  // y position of play/pause icon
+#define META_TEXT_X          14  // x position where meta text starts
+#define META_TEXT_Y         (STATUS_BAR_Y - 2)  // y position of meta text
+#define META_AVAIL_WIDTH    (SCREEN_WIDTH - META_TEXT_X)  // 114 px
 
 // ── Button configuration ────────────────────────────────────────────
 #define BUTTON_PIN      4
@@ -433,29 +435,27 @@ void renderLyrics() {
 //  STATUS BAR RENDERING  (play/pause icon + scrolling meta text)
 // ═══════════════════════════════════════════════════════════════════
 void renderStatusBar() {
-    int iconCenterY = STATUS_BAR_Y + 5;  // vertical center of icon area
-
     // ── Draw play/pause/stop icon ───────────────────────────────
     switch (playState) {
         case STATE_PLAYING:
-            // Filled triangle pointing right (play)
+            // Show pause icon (press to pause) – compact 7px
+            display.fillRect(ICON_X,     ICON_Y, 2, 7, SSD1306_WHITE);
+            display.fillRect(ICON_X + 4, ICON_Y, 2, 7, SSD1306_WHITE);
+            break;
+
+        case STATE_PAUSED:
+            // Show play icon (press to resume) – compact 7px
             display.fillTriangle(
-                ICON_X,     STATUS_BAR_Y,
-                ICON_X,     STATUS_BAR_Y + 10,
-                ICON_X + 8, STATUS_BAR_Y + 5,
+                ICON_X,     ICON_Y,
+                ICON_X,     ICON_Y + 7,
+                ICON_X + 6, ICON_Y + 3,
                 SSD1306_WHITE
             );
             break;
 
-        case STATE_PAUSED:
-            // Two vertical bars (pause)
-            display.fillRect(ICON_X,     STATUS_BAR_Y, 3, 11, SSD1306_WHITE);
-            display.fillRect(ICON_X + 5, STATUS_BAR_Y, 3, 11, SSD1306_WHITE);
-            break;
-
         case STATE_STOPPED:
-            // Small square (stop)
-            display.fillRect(ICON_X, STATUS_BAR_Y, 9, 9, SSD1306_WHITE);
+            // Small square (stop) – compact 7px
+            display.fillRect(ICON_X, ICON_Y, 7, 7, SSD1306_WHITE);
             break;
     }
 
@@ -467,7 +467,7 @@ void renderStatusBar() {
 
     if (!metaNeedsScroll) {
         // Static: fits on screen
-        display.setCursor(META_TEXT_X, STATUS_BAR_Y + 2);
+        display.setCursor(META_TEXT_X, META_TEXT_Y);
         display.print(metaText);
     } else {
         // Scrolling: draw the text shifted left by metaScrollX,
@@ -482,7 +482,7 @@ void renderStatusBar() {
                 int cx = baseX + i * 6;
                 if (cx >= SCREEN_WIDTH) break;       // past right edge
                 if (cx + 6 <= META_TEXT_X) continue;  // before left edge
-                display.setCursor(cx, STATUS_BAR_Y + 2);
+                display.setCursor(cx, META_TEXT_Y);
                 display.print(metaText.charAt(i));
             }
         }

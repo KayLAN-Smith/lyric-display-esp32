@@ -56,6 +56,7 @@ class MainWindow(QMainWindow):
         self._current_playlist_id: int | None = None
         self._shuffle_on: bool = False
         self._repeat_mode: str = "off"
+        self._in_lyric_gap: bool = False  # auto-EQ during lyric gaps
         self._eq_timer = QTimer(self)
         self._eq_timer.setInterval(80)
         self._eq_timer.timeout.connect(self._send_equalizer_levels)
@@ -358,6 +359,8 @@ class MainWindow(QMainWindow):
                 audio_path=dlg.stored_audio_path,
                 srt_path=dlg.stored_srt_path,
             )
+            if dlg.stored_offset_ms != 0:
+                self.db.set_track_offset(track_id, dlg.stored_offset_ms)
             self._library_tab.refresh()
 
     # ═════════════════════════════════════════════════════════════
@@ -417,6 +420,7 @@ class MainWindow(QMainWindow):
         self._current_track = track
         self._track_offset_ms = track.get("lyric_offset_ms", 0)
         self._last_lyric_idx = -1
+        self._in_lyric_gap = False
 
         # Load lyrics
         srt_path = track.get("srt_path", "")
@@ -432,18 +436,21 @@ class MainWindow(QMainWindow):
             return
 
         self.player.load_and_play(audio_path)
-        self._spectrum.load_file(audio_path)
+        # Delay spectrum decode so QMediaPlayer can open the file first;
+        # avoids Windows exclusive file-lock conflicts.
+        QTimer.singleShot(500, lambda p=audio_path: self._spectrum.load_file(p))
 
         self._controls.set_now_playing(track["title"], track.get("artist", ""))
 
-        # Send to ESP32: clear old lyric and set meta (state will be sent
-        # by _on_state() when the player actually transitions to playing)
+        # Send to ESP32: clear old lyric, restore mode, and set meta
         meta = self._build_meta_text(track)
         if self.serial.is_connected:
             self.serial.send_clear()
+            self.serial.send_mode(self.config.display_mode)
             self.serial.send_meta(meta)
         # Mirror to simulator
         self._oled_sim.clear()
+        self._oled_sim.set_mode(self.config.display_mode)
         self._oled_sim.set_meta(meta)
 
     def _toggle_play(self):
@@ -455,11 +462,15 @@ class MainWindow(QMainWindow):
         self.player.stop()
         self._controls.clear()
         self._controls.set_lyric("")
+        self._in_lyric_gap = False
         if self.serial.is_connected:
             self.serial.send_clear()
             self.serial.send_state("stopped")
+            if self.config.display_mode == "lyrics":
+                self.serial.send_mode("lyrics")
         self._oled_sim.clear()
         self._oled_sim.set_state("stopped")
+        self._oled_sim.set_mode(self.config.display_mode)
         self._current_track = None
         self._last_lyric_idx = -1
 
@@ -560,23 +571,45 @@ class MainWindow(QMainWindow):
         if self._offset_dialog and self._offset_dialog.isVisible():
             self._offset_dialog.set_current_lyric(text)
 
+        # Auto-switch to equalizer during lyric gaps > 300ms
+        if self.config.display_mode == "lyrics":
+            if not text and not self._in_lyric_gap:
+                # Check if the gap until the next lyric is > 300ms
+                gap_ms = self._gap_until_next_lyric(position_ms, total_offset)
+                if gap_ms < 0 or gap_ms > 300:
+                    self._in_lyric_gap = True
+                    if self.serial.is_connected:
+                        self.serial.send_mode("equalizer")
+                    self._oled_sim.set_mode("equalizer")
+            elif text and self._in_lyric_gap:
+                self._in_lyric_gap = False
+                if self.serial.is_connected:
+                    self.serial.send_mode("lyrics")
+                self._oled_sim.set_mode("lyrics")
+
         # Send to ESP32 and simulator only when the line changes
         if idx != self._last_lyric_idx:
             self._last_lyric_idx = idx
-            # Skip serial lyric updates when in equalizer mode
-            if self.serial.is_connected and self.config.display_mode != "equalizer":
+            if self.serial.is_connected and not self._in_lyric_gap:
                 if text:
                     self.serial.send_text(text)
                 else:
                     self.serial.send_clear()
-            # Always update simulator lyrics (it handles mode internally)
             if text:
                 self._oled_sim.set_text(text)
-            else:
+            elif not self._in_lyric_gap:
                 self._oled_sim.clear()
 
+    def _gap_until_next_lyric(self, position_ms: int, total_offset: int) -> int:
+        """Return ms until the next lyric starts, or -1 if no more lyrics."""
+        adjusted = position_ms - total_offset
+        for line in self._lyrics:
+            if line.start_ms > adjusted:
+                return line.start_ms - adjusted
+        return -1
+
     def _send_equalizer_levels(self):
-        if self.config.display_mode != "equalizer":
+        if self.config.display_mode != "equalizer" and not self._in_lyric_gap:
             return
         if not self.player.is_playing:
             return
@@ -635,6 +668,15 @@ class MainWindow(QMainWindow):
             self.db.set_track_offset(track_id, dlg.offset)
             if is_current:
                 self._track_offset_ms = dlg.offset
+            # Write offset.txt to the track folder for shareability
+            audio_path = track.get("audio_path", "")
+            if audio_path:
+                track_dir = os.path.dirname(audio_path)
+                try:
+                    with open(os.path.join(track_dir, "offset.txt"), "w") as f:
+                        f.write(str(dlg.offset))
+                except OSError:
+                    pass
             self._library_tab.refresh()
         elif is_current:
             # Revert live changes

@@ -74,6 +74,8 @@ class AppConfig:
             self._data = {}
         # Merge defaults
         self._data = _deep_merge(DEFAULT_CONFIG, self._data)
+        # Always force esp32_font_size to 1.5 regardless of saved config
+        self._data["esp32_font_size"] = 1.5
 
     def save(self):
         """Persist config to disk."""
@@ -123,7 +125,7 @@ class AppConfig:
 
     @property
     def esp32_font_size(self) -> float:
-        return self._data.get("esp32_font_size", 2.0)
+        return self._data.get("esp32_font_size", 1.5)
 
     @esp32_font_size.setter
     def esp32_font_size(self, val: float):

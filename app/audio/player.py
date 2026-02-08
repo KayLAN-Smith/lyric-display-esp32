@@ -38,6 +38,12 @@ class AudioPlayer(QObject):
         self._pos_timer.setInterval(50)
         self._pos_timer.timeout.connect(self._poll_position)
 
+        # Fallback timer: force play if media status never reaches Loaded
+        self._auto_play_timeout = QTimer(self)
+        self._auto_play_timeout.setSingleShot(True)
+        self._auto_play_timeout.setInterval(2000)
+        self._auto_play_timeout.timeout.connect(self._on_auto_play_timeout)
+
         # Connect Qt signals
         self._player.durationChanged.connect(self._on_duration_changed)
         self._player.playbackStateChanged.connect(self._on_state_changed)
@@ -51,21 +57,27 @@ class AudioPlayer(QObject):
 
     def load(self, filepath: str):
         """Load an audio file for playback."""
+        self._auto_play_timeout.stop()
+        self._auto_play = False
         self._player.stop()
         self._player.setSource(QUrl.fromLocalFile(filepath))
-        self._player.setPosition(0)
         self._last_emitted_pos = -1
-        self._auto_play = False
 
     def load_and_play(self, filepath: str):
         """Load an audio file and start playback once ready."""
-        self._auto_play = True
+        self._auto_play_timeout.stop()
+        # Keep _auto_play False during stop() so media status events from
+        # the old song don't consume it.
+        self._auto_play = False
         self._player.stop()
+        # Now set the flag before setSource() so a synchronous LoadedMedia
+        # (which can happen on Windows) is handled correctly.
+        self._auto_play = True
         self._player.setSource(QUrl.fromLocalFile(filepath))
-        self._player.setPosition(0)
         self._last_emitted_pos = -1
-        # If LoadedMedia fired synchronously during setSource() (Windows),
-        # _on_media_status already called play() and cleared _auto_play.
+        # Start a fallback timer in case LoadedMedia/BufferedMedia never fires
+        if self._auto_play:
+            self._auto_play_timeout.start()
 
     def play(self):
         self._player.play()
@@ -149,13 +161,25 @@ class AudioPlayer(QObject):
         ):
             if self._auto_play:
                 self._auto_play = False
-                # Re-seek to 0 after media is fully loaded to work around
-                # "[mp3float] Could not update timestamps for skipped samples"
+                self._auto_play_timeout.stop()
+                # Seek to 0 now that media is fully loaded, then play
                 self._player.setPosition(0)
                 self.play()
+        elif status == QMediaPlayer.MediaStatus.StalledMedia:
+            # On Windows, media can stall briefly during loading.
+            # If we're trying to auto-play, give it another nudge.
+            if self._auto_play:
+                self._player.play()
         if status == QMediaPlayer.MediaStatus.EndOfMedia:
             self._pos_timer.stop()
             self.media_ended.emit()
+
+    def _on_auto_play_timeout(self):
+        """Fallback: force play if media status callbacks didn't trigger."""
+        if self._auto_play:
+            self._auto_play = False
+            self._player.setPosition(0)
+            self.play()
 
     def _on_error(self, error, error_string=""):
         msg = self._player.errorString() or str(error)

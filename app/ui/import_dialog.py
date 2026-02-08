@@ -9,8 +9,8 @@ populated from previously entered artist names.
 """
 
 import os
+import re
 import shutil
-import uuid
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
@@ -39,6 +39,7 @@ class ImportDialog(QDialog):
         # Result paths (after copy into library)
         self.stored_audio_path = ""
         self.stored_srt_path = ""
+        self.stored_offset_ms = 0
 
         self._build_ui()
 
@@ -135,20 +136,46 @@ class ImportDialog(QDialog):
         self.track_title = title
         self.track_artist = self._artist_combo.currentText().strip()
 
-        # Copy files to library
+        # Copy files to library in a named folder (easy to share)
         try:
-            track_dir = os.path.join(get_library_dir(), uuid.uuid4().hex[:12])
+            artist = self.track_artist
+            folder_name = f"{artist} - {title}" if artist else title
+            # Sanitize for filesystem
+            folder_name = re.sub(r'[<>:"/\\|?*]', '_', folder_name).strip('. ')
+            track_dir = os.path.join(get_library_dir(), folder_name)
+            # Avoid collisions
+            if os.path.exists(track_dir):
+                i = 2
+                while os.path.exists(f"{track_dir} ({i})"):
+                    i += 1
+                track_dir = f"{track_dir} ({i})"
             os.makedirs(track_dir, exist_ok=True)
 
+            safe_title = re.sub(r'[<>:"/\\|?*]', '_', title).strip()
             ext = os.path.splitext(self.mp3_path)[1]
-            self.stored_audio_path = os.path.join(track_dir, f"audio{ext}")
+            self.stored_audio_path = os.path.join(track_dir, f"{safe_title}{ext}")
             shutil.copy2(self.mp3_path, self.stored_audio_path)
 
             if self.srt_path:
-                self.stored_srt_path = os.path.join(track_dir, "lyrics.srt")
+                self.stored_srt_path = os.path.join(track_dir, f"{safe_title}.srt")
                 shutil.copy2(self.srt_path, self.stored_srt_path)
             else:
                 self.stored_srt_path = ""
+
+            # Check for offset.txt in the source directory (shared folders)
+            for source_dir in {os.path.dirname(self.mp3_path),
+                               os.path.dirname(self.srt_path) if self.srt_path else ""}:
+                if not source_dir:
+                    continue
+                offset_file = os.path.join(source_dir, "offset.txt")
+                if os.path.isfile(offset_file):
+                    try:
+                        with open(offset_file, "r") as f:
+                            self.stored_offset_ms = int(f.read().strip())
+                        shutil.copy2(offset_file, os.path.join(track_dir, "offset.txt"))
+                    except (ValueError, OSError):
+                        pass
+                    break
         except OSError as e:
             QMessageBox.critical(self, "Import Error", f"Failed to copy files:\n{e}")
             return

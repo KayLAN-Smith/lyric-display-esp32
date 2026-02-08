@@ -48,7 +48,7 @@ class OffsetEditorDialog(QDialog):
 
         spin_row = QHBoxLayout()
         self._spin = QSpinBox()
-        self._spin.setRange(-30000, 30000)
+        self._spin.setRange(-99999, 99999)
         self._spin.setSingleStep(50)
         self._spin.setValue(self._offset)
         self._spin.setSuffix(" ms")
