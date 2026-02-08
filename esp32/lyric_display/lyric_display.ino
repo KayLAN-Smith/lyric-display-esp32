@@ -333,7 +333,8 @@ void renderLyrics() {
         }
         display.setFont(font);
         display.setTextSize(1);
-        int lineHeight = font->yAdvance;
+        // Use tight line heights matching the PC simulator
+        int lineHeight = (customFontId == 2) ? 18 : 14;
 
         auto textWidth = [&](const String &text) {
             int16_t x1, y1;
