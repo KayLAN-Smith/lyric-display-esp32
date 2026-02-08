@@ -74,10 +74,10 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 // ── Lyric text state ────────────────────────────────────────────────
 String currentText     = "";
-float textScale        = 2.0f;    // Display text scale (1.0-3.0, supports 1.5/2.5)
-uint8_t textSize       = 2;       // Adafruit GFX text size (1-3)
-uint8_t customFontId   = 0;       // 0=none, 1=FreeSans9pt, 2=FreeSans12pt
-bool useCustomFont     = false;
+float textScale        = 1.5f;    // Display text scale (1.0-3.0, supports 1.5/2.5)
+uint8_t textSize       = 1;       // Adafruit GFX text size (1-3)
+uint8_t customFontId   = 1;       // 0=none, 1=FreeSans9pt, 2=FreeSans12pt
+bool useCustomFont     = true;
 int  lyricScrollOffset = 0;
 int  totalLyricHeight  = 0;
 unsigned long lastLyricScrollTime = 0;
