@@ -306,8 +306,13 @@ class _OledCanvas(QWidget):
 
     def _paint_lyrics_custom_font(self, p: QPainter, char_h: int):
         """Render lyrics with a proportional font (simulating FreeSans9pt7b)."""
-        font = QFont("Arial", 1)
-        font.setPixelSize(max(1, char_h - 2))
+        # Match ESP32's FreeSans9pt7b as closely as possible
+        font = QFont("FreeSans")
+        if not QFontMetrics(font).horizontalAdvance("A"):
+            font = QFont("Liberation Sans")
+        if not QFontMetrics(font).horizontalAdvance("A"):
+            font = QFont("Arial")
+        font.setPixelSize(char_h)
         font.setStyleStrategy(QFont.StyleStrategy.NoAntialias)
         p.setFont(font)
         fm = QFontMetrics(font)
