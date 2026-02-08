@@ -283,7 +283,7 @@ class _OledCanvas(QWidget):
         """Word-wrap and draw lyrics in the top 48px area."""
         if self._use_custom_font:
             # 1.5x ~ FreeSans9pt (14px), 2.5x ~ FreeSans12pt (18px)
-            char_h = 18 if (2.4 < self._text_scale < 2.6) else 14
+            char_h = 18 if (2.4 < self._text_scale < 2.6) else 13
             self._paint_lyrics_custom_font(p, char_h)
         else:
             char_w = GFX_CHAR_W * self._text_size
