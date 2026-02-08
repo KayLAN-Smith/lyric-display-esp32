@@ -4,13 +4,15 @@ playback, serial communication, and lyric synchronization.
 """
 
 import os
+import re
 import math
 import random
+import shutil
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
     QLabel, QPushButton, QComboBox, QStatusBar, QMenuBar, QMessageBox,
-    QFrame,
+    QFrame, QFileDialog,
 )
 from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtGui import QAction, QShortcut, QKeySequence
@@ -20,7 +22,7 @@ from audio.player import AudioPlayer
 from audio.spectrum import SpectrumAnalyzer
 from srt.parser import parse_srt_file, get_lyric_at_position
 from serial_comm.connection import SerialConnection, list_serial_ports
-from settings.config import AppConfig
+from settings.config import AppConfig, get_library_dir
 
 from ui.library_tab import LibraryTab
 from ui.playlists_tab import PlaylistsTab
@@ -94,6 +96,7 @@ class MainWindow(QMainWindow):
         menu_bar = self.menuBar()
         file_menu = menu_bar.addMenu("File")
         file_menu.addAction("Import Song...", self._import_song)
+        file_menu.addAction("Import Folder...", self._import_folder)
         file_menu.addSeparator()
         file_menu.addAction("Settings...", self._open_settings)
         file_menu.addSeparator()
@@ -362,6 +365,100 @@ class MainWindow(QMainWindow):
             if dlg.stored_offset_ms != 0:
                 self.db.set_track_offset(track_id, dlg.stored_offset_ms)
             self._library_tab.refresh()
+
+    def _import_folder(self):
+        """Batch-import all songs from a folder (and its subfolders)."""
+        folder = QFileDialog.getExistingDirectory(self, "Select Folder to Import")
+        if not folder:
+            return
+
+        # Collect all MP3 files in the folder and immediate subfolders
+        mp3_files: list[str] = []
+        for entry in os.scandir(folder):
+            if entry.is_file() and entry.name.lower().endswith(".mp3"):
+                mp3_files.append(entry.path)
+            elif entry.is_dir():
+                for sub in os.scandir(entry.path):
+                    if sub.is_file() and sub.name.lower().endswith(".mp3"):
+                        mp3_files.append(sub.path)
+
+        if not mp3_files:
+            QMessageBox.information(self, "No Songs Found",
+                                   "No MP3 files were found in the selected folder.")
+            return
+
+        imported = 0
+        lib_dir = get_library_dir()
+
+        for mp3_path in mp3_files:
+            src_dir = os.path.dirname(mp3_path)
+            base_name = os.path.splitext(os.path.basename(mp3_path))[0]
+
+            # Parse artist from folder name ("Artist - Title" pattern)
+            folder_name = os.path.basename(src_dir)
+            if " - " in folder_name:
+                artist, _ = folder_name.split(" - ", 1)
+                artist = artist.strip()
+            else:
+                artist = ""
+            title = base_name
+
+            # Find matching SRT
+            srt_path = ""
+            for f in os.listdir(src_dir):
+                if f.lower().endswith(".srt"):
+                    srt_path = os.path.join(src_dir, f)
+                    break
+
+            # Read offset
+            offset_ms = 0
+            offset_file = os.path.join(src_dir, "offset.txt")
+            if os.path.isfile(offset_file):
+                try:
+                    with open(offset_file, "r") as f:
+                        offset_ms = int(f.read().strip())
+                except (ValueError, OSError):
+                    pass
+
+            # Copy into library
+            try:
+                dest_name = f"{artist} - {title}" if artist else title
+                dest_name = re.sub(r'[<>:"/\\|?*]', '_', dest_name).strip('. ')
+                track_dir = os.path.join(lib_dir, dest_name)
+                if os.path.exists(track_dir):
+                    i = 2
+                    while os.path.exists(f"{track_dir} ({i})"):
+                        i += 1
+                    track_dir = f"{track_dir} ({i})"
+                os.makedirs(track_dir, exist_ok=True)
+
+                safe_title = re.sub(r'[<>:"/\\|?*]', '_', title).strip()
+                ext = os.path.splitext(mp3_path)[1]
+                stored_audio = os.path.join(track_dir, f"{safe_title}{ext}")
+                shutil.copy2(mp3_path, stored_audio)
+
+                stored_srt = ""
+                if srt_path:
+                    stored_srt = os.path.join(track_dir, f"{safe_title}.srt")
+                    shutil.copy2(srt_path, stored_srt)
+
+                if offset_ms != 0:
+                    with open(os.path.join(track_dir, "offset.txt"), "w") as f:
+                        f.write(str(offset_ms))
+
+                track_id = self.db.add_track(
+                    title=title, artist=artist, duration_ms=0,
+                    audio_path=stored_audio, srt_path=stored_srt,
+                )
+                if offset_ms != 0:
+                    self.db.set_track_offset(track_id, offset_ms)
+                imported += 1
+            except OSError:
+                continue
+
+        self._library_tab.refresh()
+        QMessageBox.information(self, "Import Complete",
+                               f"Imported {imported} song{'s' if imported != 1 else ''}.")
 
     # ═════════════════════════════════════════════════════════════
     #  PLAYBACK
