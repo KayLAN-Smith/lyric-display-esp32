@@ -279,6 +279,10 @@ void processCommand(String cmd) {
             eqHeights[index++] = 0;
         }
         lastEqHostUpdate = millis();
+        // Auto-switch to EQ display when receiving EQ data
+        if (displayMode != MODE_EQUALIZER) {
+            displayMode = MODE_EQUALIZER;
+        }
         displayDirty = true;
     }
 }

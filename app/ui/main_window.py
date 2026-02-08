@@ -5,7 +5,6 @@ playback, serial communication, and lyric synchronization.
 
 import os
 import re
-import math
 import random
 import shutil
 
@@ -682,6 +681,7 @@ class MainWindow(QMainWindow):
                 if gap_ms < 0 or gap_ms > 300:
                     self._in_lyric_gap = True
                     if self.serial.is_connected:
+                        self.serial.send_clear()
                         self.serial.send_mode("equalizer")
                     self._oled_sim.set_mode("equalizer")
                     # Send EQ levels immediately so the ESP32 has data to display
@@ -690,6 +690,7 @@ class MainWindow(QMainWindow):
                 self._in_lyric_gap = False
                 if self.serial.is_connected:
                     self.serial.send_mode("lyrics")
+                    self.serial.send_text(text)
                 self._oled_sim.set_mode("lyrics")
 
         # Send to ESP32 and simulator only when the line changes
@@ -722,19 +723,9 @@ class MainWindow(QMainWindow):
         if volume <= 0.01:
             levels = [0] * 12
         else:
-            # Try real FFT-based spectrum analysis first
             levels = self._spectrum.get_levels(self.player.position)
             if levels is None:
-                # Fallback: fake sine-wave animation
-                t = self.player.position / 1000.0
-                base = 0.2 + (volume * 0.8)
-                levels = []
-                for i in range(12):
-                    wave = math.sin(t * 2.5 + i * 0.7)
-                    wobble = math.sin(t * 0.7 + i * 1.3)
-                    value = (wave + 1.0) * 0.5 + (wobble + 1.0) * 0.2
-                    level = int(min(12, max(0, value * 12 * base)))
-                    levels.append(level)
+                return
         if self.serial.is_connected:
             self.serial.send_equalizer(levels)
         self._oled_sim.set_equalizer(levels)
