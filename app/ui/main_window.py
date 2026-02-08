@@ -97,6 +97,7 @@ class MainWindow(QMainWindow):
         file_menu = menu_bar.addMenu("File")
         file_menu.addAction("Import Song...", self._import_song)
         file_menu.addAction("Import Folder...", self._import_folder)
+        file_menu.addAction("Open Library Folder", self._open_library_folder)
         file_menu.addSeparator()
         file_menu.addAction("Settings...", self._open_settings)
         file_menu.addSeparator()
@@ -460,6 +461,11 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Import Complete",
                                f"Imported {imported} song{'s' if imported != 1 else ''}.")
 
+    def _open_library_folder(self):
+        """Open the library folder in the system file explorer."""
+        lib_dir = get_library_dir()
+        os.startfile(lib_dir)
+
     # ═════════════════════════════════════════════════════════════
     #  PLAYBACK
     # ═════════════════════════════════════════════════════════════
@@ -678,6 +684,8 @@ class MainWindow(QMainWindow):
                     if self.serial.is_connected:
                         self.serial.send_mode("equalizer")
                     self._oled_sim.set_mode("equalizer")
+                    # Send EQ levels immediately so the ESP32 has data to display
+                    self._send_equalizer_levels()
             elif text and self._in_lyric_gap:
                 self._in_lyric_gap = False
                 if self.serial.is_connected:
