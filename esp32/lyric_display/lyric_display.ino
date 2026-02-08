@@ -325,13 +325,15 @@ void renderLyrics() {
     int lineCount = 0;
 
     if (useCustomFont) {
+        const GFXfont *font;
         if (customFontId == 2) {
-            display.setFont(&FreeSans12pt7b);
+            font = &FreeSans12pt7b;
         } else {
-            display.setFont(&FreeSans9pt7b);
+            font = &FreeSans9pt7b;
         }
+        display.setFont(font);
         display.setTextSize(1);
-        int lineHeight = display.getFont()->yAdvance;
+        int lineHeight = font->yAdvance;
 
         auto textWidth = [&](const String &text) {
             int16_t x1, y1;
